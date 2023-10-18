@@ -1,6 +1,6 @@
 import base64, random, hashlib
 import mariadb
-from .Database import *
+from . import Database
 import datetime, jwt
 from flask import make_response,Flask, jsonify, request, render_template
 from pytz import timezone
@@ -20,7 +20,7 @@ def sha256 ( pw ) :
     return r.hexdigest()
 
 def get_db_conn (db_name):
-    conn = mariadb.connect(user=DB_USER,password=DB_PASSWORD,host=DB_HOST,port=DB_PORT,database=db_name)
+    conn = mariadb.connect(user=Database.DB_USER,password=Database.DB_PASSWORD,host=Database.DB_HOST,port=Database.DB_PORT,database=db_name)
     return conn
 
 def create_token_per_type(payload = {'exp':get_time_now() + datetime.timedelta(seconds = 24*60*60)}):
