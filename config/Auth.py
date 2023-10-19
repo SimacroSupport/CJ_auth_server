@@ -25,7 +25,7 @@ def get_db_conn (db_name):
 
 def create_token_per_type(payload = {'exp':get_time_now() + datetime.timedelta(seconds = 24*60*60)}):
     encoded = jwt.encode(payload = payload,key = PRIVATE_KEY, algorithm = 'HS256')
-    return encoded.decode('utf-8')
+    return encoded
 
 # token expire or invalid token then return {}
 def decode_token( token ):

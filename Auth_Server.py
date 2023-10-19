@@ -4,7 +4,7 @@ from flask import make_response,Flask, jsonify, request, render_template
 from flask_cors import CORS
 import requests, datetime,secrets, json
 import mariadb, jwt
-
+from pytz import timezone
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -65,10 +65,10 @@ def create_token():
     access_token = create_token_per_type(payload)
 
     # save refresh token to db
-    refresh_token = create_token_per_type()
-    insert_tuple = (user_no, refresh_token)
-    insert_query = f"INSERT INTO refresh_token (user_no, refresh_token) VALUES (%s, %s)"
-    corsor_a.execute(insert_query, insert_tuple)
+    # refresh_token = create_token_per_type()
+    # insert_tuple = (user_no, refresh_token)
+    # insert_query = f"INSERT INTO refresh_token (user_no, refresh_token) VALUES (%s, %s)"
+    # corsor_a.execute(insert_query, insert_tuple)
 
     conn_a.commit()
 
@@ -84,7 +84,14 @@ def create_token():
 
     conn_l.commit()
 
-    response = make_response({"access_token":access_token, 'user_info': payload})
+
+    #admin user case, return password expiration list
+    user_authentication_level = profile_row[7] 
+    if user_authentication_level == 'admin' : expiration_list = get_pw_expiration_list()
+    else : expiration_list = []
+    
+
+    response = make_response({"access_token":access_token, 'user_info': payload, 'expiration_list':expiration_list})
     # response.headers['Access-Token'] = access_token
     # expire_date = get_time_now()
     # expire_date = expire_date + datetime.timedelta(days=1)
@@ -361,6 +368,52 @@ def read_log():
         return "Invalid request",404 
 
     return json.dumps({"log_list":log_list}, default=str)
+
+
+def get_pw_expiration_list():
+    
+    corsor_m.execute(f"SELECT * FROM cj_websim_auth.password INNER JOIN cj_websim_member.users ON password.user_no = users.user_no")
+    entire_user_list = corsor_m.fetchall() 
+    # entire_user_list[n][3] : recent update date /
+    # entire_user_list[n][5] : user id  /  
+    # entire_user_list[n][6] : user login type
+
+    password_expiration_list = []
+    now_datetime = get_time_now()
+    now_timestamp = now_datetime.timestamp()
+
+    STANDARD_TIMESTAMP_VALUE = 24 * 60 * 60 * 80 # 80 days
+    print( entire_user_list)
+
+    for i in range( len( entire_user_list ) ):
+        if entire_user_list[i][6] == "SSO" :
+            pass
+        else : # "EXCEPT"
+            print(entire_user_list[i])
+            recent_update_datetime_obj = entire_user_list[i][3]
+
+            recent_update_datetimestamp = recent_update_datetime_obj.timestamp()
+            if ( now_timestamp - recent_update_datetimestamp > STANDARD_TIMESTAMP_VALUE) :
+                corsor_m.execute(f"SELECT user_name FROM profile WHERE user_no = ?", (entire_user_list[i][1],))
+                username = corsor_m.fetchone() # (username, )
+                
+                remain_days = int((now_timestamp - recent_update_datetimestamp) // (24*60*60) - 80 )
+                if (remain_days < 0) :
+                    remains = str( -1 * remain_days) + " days remain"
+                else :
+                    remains = str(  remain_days) + " days pass"
+    
+                recent_update_datetime = datetime.datetime.fromtimestamp(recent_update_datetimestamp, (timezone('Asia/Seoul')))
+
+                print(recent_update_datetime_obj)
+                print(recent_update_datetime)
+                password_expiration_list.append([username[0], recent_update_datetime, remains ])
+
+
+
+    return password_expiration_list
+
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=20000)
