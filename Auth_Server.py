@@ -415,5 +415,48 @@ def get_pw_expiration_list():
 
 
 
+
+def create_admin():
+
+    salt = get_salt()
+    pw = sha256( "tlakzmfh1!" + salt )
+
+    # Check duplicate
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('simacro',))
+    isExist = corsor_m.fetchone()
+    if (isExist) is not None: return "Admin already exist", 409
+
+    # CJ_Websim_Member.users insert
+    insert_tuple = ('simacro', 'EXCEPT')
+    insert_query = f"INSERT INTO users (user_name, login_type) VALUES (%s, %s)"
+    corsor_m.execute(insert_query, insert_tuple)
+
+    # Get user_no ( Foreign key / automatically increase int value)
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('simacro',))
+    user = corsor_m.fetchone() # (user_no, user_name, login_type)
+    user_no = user[0] 
+
+    # CJ_Websim_Member.profile insert 
+    insert_tuple = (user_no, '-', '-', '-', 'admin', 'admin')
+    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, cj_world_account, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s, %s)"
+    corsor_m.execute(insert_query, insert_tuple)
+
+    conn_m.commit()
+    
+    # CJ_Websim_Auth.password insert
+    insert_tuple = (user_no, salt, pw)
+    insert_query = f"INSERT INTO password (user_no, salt, password) VALUES (%d, %s, %s)"
+    corsor_a.execute(insert_query, insert_tuple)
+
+    # commit db 
+    conn_a.commit()
+
+    return json.dumps({'Admin created'} , default=str), 201
+
+create_admin()
+
+
 if __name__ == '__main__':
+    
     app.run(host='0.0.0.0', port=20000)
+    
