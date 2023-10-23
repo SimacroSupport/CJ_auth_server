@@ -1,9 +1,8 @@
 from config.Database import *
 from config.Auth import *
-from flask import make_response,Flask, jsonify, request, render_template
+from flask import make_response,Flask, request
 from flask_cors import CORS
-import requests, datetime,secrets, json
-import mariadb, jwt
+import datetime, json
 from pytz import timezone
 
 app = Flask(__name__)
