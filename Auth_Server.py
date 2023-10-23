@@ -1,9 +1,8 @@
 from config.Database import *
 from config.Auth import *
-from flask import make_response,Flask, jsonify, request, render_template
+from flask import make_response,Flask, request
 from flask_cors import CORS
-import requests, datetime,secrets, json
-import mariadb, jwt
+import datetime, json
 from pytz import timezone
 
 app = Flask(__name__)
@@ -73,7 +72,7 @@ def create_token():
     conn_a.commit()
 
     #Login log insert (success)
-    insert_tuple = (user_no, rq['user_name'], 1, rq['ip'])
+    insert_tuple = (user_no, rq['user_name'], 1, '')
     insert_query = f"INSERT INTO login_log (user_no, user_name, status_code, ip) VALUES (%s, %s, %d, %s)"
     corsor_l.execute(insert_query, insert_tuple)
 
