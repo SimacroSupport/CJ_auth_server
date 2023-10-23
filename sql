@@ -84,3 +84,4 @@ CREATE TABLE Login_log (
     -- fail_reason TINYINT,
     login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+

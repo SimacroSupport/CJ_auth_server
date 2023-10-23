@@ -419,20 +419,20 @@ def get_pw_expiration_list():
 def create_admin():
 
     salt = get_salt()
-    pw = sha256( "tlakzmfh1!" + salt )
+    pw = sha256( "cj1234!" + salt )
 
     # Check duplicate
-    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('simacro',))
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cj_admin',))
     isExist = corsor_m.fetchone()
     if (isExist) is not None: return "Admin already exist", 409
 
     # CJ_Websim_Member.users insert
-    insert_tuple = ('simacro', 'EXCEPT')
+    insert_tuple = ('cj_admin', 'EXCEPT')
     insert_query = f"INSERT INTO users (user_name, login_type) VALUES (%s, %s)"
     corsor_m.execute(insert_query, insert_tuple)
 
     # Get user_no ( Foreign key / automatically increase int value)
-    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('simacro',))
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cj_admin',))
     user = corsor_m.fetchone() # (user_no, user_name, login_type)
     user_no = user[0] 
 
@@ -453,10 +453,38 @@ def create_admin():
 
     return json.dumps({'Admin created'} , default=str), 201
 
+
+def create_test_user():
+
+    # Check duplicate
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cjwsampleuser',))
+    isExist = corsor_m.fetchone()
+    if (isExist) is not None: return "cjwsampleuser already exist", 409
+
+    # CJ_Websim_Member.users insert
+    insert_tuple = ('cjwsampleuser', 'SSO')
+    insert_query = f"INSERT INTO users (user_name, login_type) VALUES (%s, %s)"
+    corsor_m.execute(insert_query, insert_tuple)
+
+    # Get user_no ( Foreign key / automatically increase int value)
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cjwsampleuser',))
+    user = corsor_m.fetchone() # (user_no, user_name, login_type)
+    user_no = user[0] 
+
+    # CJ_Websim_Member.profile insert 
+    insert_tuple = (user_no, '-', '-', '-', 'admin', 'admin')
+    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, cj_world_account, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s, %s)"
+    corsor_m.execute(insert_query, insert_tuple)
+
+    conn_m.commit()
+    
+
+    return json.dumps({'testuser created'} , default=str), 201
+
 create_admin()
+create_test_user()
 
 
 if __name__ == '__main__':
-    
     app.run(host='0.0.0.0', port=20000)
     
