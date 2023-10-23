@@ -40,13 +40,7 @@ CREATE TABLE Password (
     password VARCHAR(128),
     FOREIGN KEY(user_no) REFERENCES CJ_Websim_Member.Users(user_no) ON DELETE CASCADE
 );
-CREATE TABLE Refresh_token (
-    refresh_token_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_no INT,
-    update_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    refresh_token VARCHAR(256),
-    FOREIGN KEY(user_no) REFERENCES CJ_Websim_Member.Users(user_no) ON DELETE CASCADE
-);
+
 
 use CJ_Websim_Log;
 CREATE TABLE User_activity_log (
@@ -57,17 +51,7 @@ CREATE TABLE User_activity_log (
     meta_data VARCHAR(256), -- calculation log / status code / menu name
     log_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE Db_activity_log (
-    db_activity_log_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_no INT,
-    table_name VARCHAR(30),
-    row_id INT, 
-    activity_code CHAR(1), -- C:Create,R:Read,U:Update,D:Delete
-    as_is VARCHAR(256),
-    to_be VARCHAR(256),
-    modifier TINYINT DEFAULT 1, -- 1:user,2:admin,3:etc
-    log_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+
 CREATE TABLE Withdrawal_log (
     withdrawal_log_id INT AUTO_INCREMENT PRIMARY KEY,
     user_no INT,

@@ -30,8 +30,9 @@ def create_token():
     # check user exist
     corsor_m.execute(f"SELECT user_no FROM users WHERE user_name = ?", (rq['user_name'],))
     user_no = corsor_m.fetchone() # (user_no,)
-    user_no = user_no[0]
     if (user_no) is None: return "User name not exist", 400
+    user_no = user_no[0]
+    
 
     # check authorize
     if (rq['login_type']) == 'EXCEPT':
@@ -41,7 +42,7 @@ def create_token():
         if pw == pw_row[4] : pass 
         else : 
             #Login log insert (fail)
-            insert_tuple = (user_no, rq['user_name'], 0, rq['ip'])
+            insert_tuple = (user_no, rq['user_name'], 0, '')
             insert_query = f"INSERT INTO login_log (user_no, user_name, status_code, ip) VALUES (%s, %s, %d, %s)"
             corsor_l.execute(insert_query, insert_tuple)
             conn_l.commit()
@@ -49,7 +50,7 @@ def create_token():
     elif (rq['login_type']) == 'SSO': pass
     else: 
         #Login log insert (fail)
-        insert_tuple = (user_no, rq['user_name'], 0, rq['ip'])
+        insert_tuple = (user_no, rq['user_name'], 0, '')
         insert_query = f"INSERT INTO login_log (user_no, user_name, status_code, ip) VALUES (%s, %s, %d, %s)"
         corsor_l.execute(insert_query, insert_tuple)
         conn_l.commit()
@@ -73,7 +74,7 @@ def create_token():
     conn_a.commit()
 
     #Login log insert (success)
-    insert_tuple = (user_no, rq['user_name'], 1, rq['ip'])
+    insert_tuple = (user_no, rq['user_name'], 1, '')
     insert_query = f"INSERT INTO login_log (user_no, user_name, status_code, ip) VALUES (%s, %s, %d, %s)"
     corsor_l.execute(insert_query, insert_tuple)
 
@@ -102,12 +103,6 @@ def create_token():
     # return access token , refresh token
     return response
 
-
-
-@app.route('/token/refresh', methods=['POST'])
-def refresh_token():
-    rq = request.get_json()
-    refresh_token = 1
     
 #User
 #------------------------------------------------------------#
@@ -301,9 +296,6 @@ def update_users_admin():
     return json.dumps({"status":"update"})
 
 
-
-
-
 @app.route('/users/list', methods=['POST'])
 def read_users():
 
@@ -481,8 +473,37 @@ def create_test_user():
 
     return json.dumps({'testuser created'} , default=str), 201
 
+def create_test_user_2():
+
+    # Check duplicate
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cj_sample_user',))
+    isExist = corsor_m.fetchone()
+    if (isExist) is not None: return "cjwsampleuser already exist", 409
+
+    # CJ_Websim_Member.users insert
+    insert_tuple = ('cj_sample_user', 'EXCEPT')
+    insert_query = f"INSERT INTO users (user_name, login_type) VALUES (%s, %s)"
+    corsor_m.execute(insert_query, insert_tuple)
+
+    # Get user_no ( Foreign key / automatically increase int value)
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cj_sample_user',))
+    user = corsor_m.fetchone() # (user_no, user_name, login_type)
+    user_no = user[0] 
+
+    # CJ_Websim_Member.profile insert 
+    insert_tuple = (user_no, '-', '-', '-', 'user', 'user')
+    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, cj_world_account, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s, %s)"
+    corsor_m.execute(insert_query, insert_tuple)
+
+    conn_m.commit()
+    
+
+    return json.dumps({'testuser created'} , default=str), 201
+
+
 create_admin()
 create_test_user()
+create_test_user_2()
 
 
 if __name__ == '__main__':
