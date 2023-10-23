@@ -63,9 +63,6 @@ CREATE TABLE Login_log (
     user_no INT,
     user_name VARCHAR(20),
     status_code TINYINT, -- 0: Fail, 1: Success
-    ip VARCHAR(15),
-    -- fail_count TINYINT,
-    -- fail_reason TINYINT,
     login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

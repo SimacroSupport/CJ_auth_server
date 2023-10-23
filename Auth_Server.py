@@ -268,16 +268,17 @@ def update_users_admin():
     update_tuple_a = ()
     update_query_a = ''
 
-    if rq['email_address'] != '' or rq['cj_world_account'] != '' or  rq['phone_number'] != '' :
-        update_tuple_m = ( rq['email_address'], rq['phone_number'], rq['cj_world_account'], rq['target_user_no'])
-        update_query_m = f"UPDATE profile set email = ?, cell_phone = ?, cj_world_account = ? WHERE user_no = ?"
+    if rq['email_address'] != '' or rq['cj_world_account'] != '' or  rq['phone_number'] != '' or  rq['user_authentication_level'] != '' :
+        update_tuple_m = ( rq['email_address'], rq['phone_number'], rq['cj_world_account'] , rq['user_authentication_level'], rq['target_user_no'])
+        update_query_m = f"UPDATE profile set email = ?, cell_phone = ?, cj_world_account = ?, authentication_level = ? WHERE user_no = ?"
 
     if rq['new_password'] != '' :
         corsor_a.execute(f"SELECT * FROM password WHERE user_no = ?", (rq['target_user_no'],))
         pw_row = corsor_a.fetchone()
         new_pw = sha256( rq['new_password'] + pw_row[2] ) # check pw
         update_tuple_a = ( new_pw, rq['target_user_no'])
-        update_query_a = f"UPDATE password set password = ? WHERE user_no = ?"
+        update_query_a = f"UPDATE password set password = ? WHERE user_no = ?" 
+    
     
     # nothing to change
     if update_tuple_m == () and update_tuple_a == () :
@@ -292,7 +293,11 @@ def update_users_admin():
         conn_a.commit()
 
 
-    return json.dumps({"status":"update"})
+    # join member.users, member.profile , return tuple array
+    corsor_m.execute(f"SELECT * FROM users INNER JOIN profile ON users.user_no = profile.user_no")
+    user_list = corsor_m.fetchall() # ( , , , )
+
+    return json.dumps({'user_list':user_list} , default=str)
 
 
 @app.route('/users/list', methods=['POST'])
@@ -330,7 +335,7 @@ def create_log():
     corsor_l.execute(insert_query, insert_tuple)
     conn_l.commit()
 
-    return json.dumps()
+    return json.dumps({})
 
 @app.route('/log/list', methods=['POST'])
 def read_log():
@@ -463,7 +468,7 @@ def create_test_user():
     user_no = user[0] 
 
     # CJ_Websim_Member.profile insert 
-    insert_tuple = (user_no, '-', '-', '-', 'admin', 'admin')
+    insert_tuple = (user_no, '-', '-', 'cjwsampleuser', 'admin', 'cjwsampleuser')
     insert_query = f"INSERT INTO profile (user_no, cell_phone, email, cj_world_account, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s, %s)"
     corsor_m.execute(insert_query, insert_tuple)
 
@@ -490,7 +495,7 @@ def create_test_user_2():
     user_no = user[0] 
 
     # CJ_Websim_Member.profile insert 
-    insert_tuple = (user_no, '-', '-', '-', 'user', 'user')
+    insert_tuple = (user_no, '-', '-', 'cj_sample_user', 'user', 'cj_sample_user')
     insert_query = f"INSERT INTO profile (user_no, cell_phone, email, cj_world_account, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s, %s)"
     corsor_m.execute(insert_query, insert_tuple)
 
