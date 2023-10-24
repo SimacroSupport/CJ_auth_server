@@ -102,6 +102,18 @@ def create_token():
     # return access token , refresh token
     return response
 
+
+@app.route('/token/valid', methods=['POST'])
+def validate_token():
+
+    rq = request.get_json() # access_token
+    decoded_token = decode_token(rq['access_token'])
+    if decoded_token == {} : return "Access Token is not valid",401
+    else :  return "Access Token is valid",200
+
+
+
+
     
 #User
 #------------------------------------------------------------#
@@ -511,5 +523,5 @@ create_test_user_2()
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=20000)
+    app.run(host='0.0.0.0', port=4090)
     
