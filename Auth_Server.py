@@ -18,7 +18,7 @@ corsor_l = conn_l.cursor()
 
 @app.route('/')
 def board():
-    return "20000 Auth_Server running"
+    return "4090 Auth_Server running"
 
 #Token
 #Login Request == Token Create
