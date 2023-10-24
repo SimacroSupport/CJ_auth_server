@@ -394,9 +394,7 @@ def get_pw_expiration_list():
     print( entire_user_list)
 
     for i in range( len( entire_user_list ) ):
-        if entire_user_list[i][6] == "SSO" :
-            pass
-        else : # "EXCEPT"
+        
             print(entire_user_list[i])
             recent_update_datetime_obj = entire_user_list[i][3]
 
