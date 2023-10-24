@@ -41,16 +41,16 @@ def create_token():
         if pw == pw_row[4] : pass 
         else : 
             #Login log insert (fail)
-            insert_tuple = (user_no, rq['user_name'], 0, '')
-            insert_query = f"INSERT INTO login_log (user_no, user_name, status_code, ip) VALUES (%s, %s, %d, %s)"
+            insert_tuple = (user_no, rq['user_name'], 0)
+            insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
             corsor_l.execute(insert_query, insert_tuple)
             conn_l.commit()
             return 'Id or Password is not valid', 401
     elif (rq['login_type']) == 'SSO': pass
     else: 
         #Login log insert (fail)
-        insert_tuple = (user_no, rq['user_name'], 0, '')
-        insert_query = f"INSERT INTO login_log (user_no, user_name, status_code, ip) VALUES (%s, %s, %d, %s)"
+        insert_tuple = (user_no, rq['user_name'], 0)
+        insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
         corsor_l.execute(insert_query, insert_tuple)
         conn_l.commit()
         return "Bad Request", 404
@@ -73,8 +73,8 @@ def create_token():
     conn_a.commit()
 
     #Login log insert (success)
-    insert_tuple = (user_no, rq['user_name'], 1, '')
-    insert_query = f"INSERT INTO login_log (user_no, user_name, status_code, ip) VALUES (%s, %s, %d, %s)"
+    insert_tuple = (user_no, rq['user_name'], 1)
+    insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
     corsor_l.execute(insert_query, insert_tuple)
 
     #user activity log insert *(login success cases only)
