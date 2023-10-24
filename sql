@@ -15,15 +15,15 @@ GRANT ALL PRIVILEGES ON CJ_Websim_Withdrawal.* TO 'cjwebsim'@'localhost';
 use CJ_Websim_Member;
 CREATE TABLE Users (
     user_no INT AUTO_INCREMENT PRIMARY KEY,
-    user_name VARCHAR(20),
-    login_type VARCHAR(20) -- "SSO" / "EXCEPT"
+    user_name VARCHAR(20)
+    -- login_type VARCHAR(20) -- "SSO" / "EXCEPT"
 );
 CREATE TABLE Profile (
     profile_id INT AUTO_INCREMENT PRIMARY KEY,
     user_no INT,
     cell_phone VARCHAR(128), -- base64 encryt
     email VARCHAR(128), -- base64 encryt
-    cj_world_account VARCHAR(30), -- base64 encryt
+    -- cj_world_account VARCHAR(30), -- base64 encryt
     join_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     authentication_level VARCHAR(20) NOT NULL, -- 'User'/'Admin'

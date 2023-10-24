@@ -61,7 +61,7 @@ def create_token():
 
     # create access token
     payload = {'exp':get_time_now() + datetime.timedelta(hours= 24), 'user_no':user_no, 'cell_phone':profile_row[2],'email':profile_row[3]
-               ,'cj_world_account':profile_row[3],'authentication_level':profile_row[7], "user_name":profile_row[8]}
+               , 'authentication_level':profile_row[6], "user_name":profile_row[7]}
     access_token = create_token_per_type(payload)
 
     # save refresh token to db
@@ -141,13 +141,13 @@ def create_users():
     if (isExist) is not None: return "User id already exist", 409
 
     # CJ_Websim_Member.users insert
-    insert_tuple = (rq['user_name'], rq['login_type'])
-    insert_query = f"INSERT INTO users (user_name, login_type) VALUES (%s, %s)"
+    insert_tuple = (rq['user_name'])
+    insert_query = f"INSERT INTO users (user_name) VALUES (%s, %s)"
     corsor_m.execute(insert_query, insert_tuple)
 
     # Get user_no ( Foreign key / automatically increase int value)
     corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", (rq['user_name'],))
-    user = corsor_m.fetchone() # (user_no, user_name, login_type)
+    user = corsor_m.fetchone() # (user_no, user_name)
     user_no = user[0] 
 
     # CJ_Websim_Member.profile insert 
@@ -435,8 +435,8 @@ def create_admin():
     if (isExist) is not None: return "Admin already exist", 409
 
     # CJ_Websim_Member.users insert
-    insert_tuple = ('cj_admin', 'EXCEPT')
-    insert_query = f"INSERT INTO users (user_name, login_type) VALUES (%s, %s)"
+    insert_tuple = ('cj_admin',)
+    insert_query = f"INSERT INTO users (user_name) VALUES (%s)"
     corsor_m.execute(insert_query, insert_tuple)
 
     # Get user_no ( Foreign key / automatically increase int value)
@@ -445,8 +445,8 @@ def create_admin():
     user_no = user[0] 
 
     # CJ_Websim_Member.profile insert 
-    insert_tuple = (user_no, '-', '-', '-', 'admin', 'admin')
-    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, cj_world_account, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s, %s)"
+    insert_tuple = (user_no, '-', '-', 'admin', 'admin')
+    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s)"
     corsor_m.execute(insert_query, insert_tuple)
 
     conn_m.commit()
@@ -464,14 +464,18 @@ def create_admin():
 
 def create_test_user():
 
+    salt = get_salt()
+    pw = sha256( "0000" + salt )
+
+
     # Check duplicate
     corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cjwsampleuser',))
     isExist = corsor_m.fetchone()
     if (isExist) is not None: return "cjwsampleuser already exist", 409
 
     # CJ_Websim_Member.users insert
-    insert_tuple = ('cjwsampleuser', 'SSO')
-    insert_query = f"INSERT INTO users (user_name, login_type) VALUES (%s, %s)"
+    insert_tuple = ('cjwsampleuser',)
+    insert_query = f"INSERT INTO users (user_name) VALUES (%s)"
     corsor_m.execute(insert_query, insert_tuple)
 
     # Get user_no ( Foreign key / automatically increase int value)
@@ -480,46 +484,26 @@ def create_test_user():
     user_no = user[0] 
 
     # CJ_Websim_Member.profile insert 
-    insert_tuple = (user_no, '-', '-', 'cjwsampleuser', 'admin', 'cjwsampleuser')
-    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, cj_world_account, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s, %s)"
+    insert_tuple = (user_no, '-', '-', 'admin', 'cjwsampleuser')
+    insert_query = f"INSERT INTO profile (user_no, cell_phone, email,  authentication_level, user_name) VALUES (%d, %s, %s, %s, %s)"
     corsor_m.execute(insert_query, insert_tuple)
 
     conn_m.commit()
+
+    # CJ_Websim_Auth.password insert
+    insert_tuple = (user_no, salt, pw)
+    insert_query = f"INSERT INTO password (user_no, salt, password) VALUES (%d, %s, %s)"
+    corsor_a.execute(insert_query, insert_tuple)
     
+    conn_a.commit()
 
     return json.dumps({'testuser created'} , default=str), 201
 
-def create_test_user_2():
-
-    # Check duplicate
-    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cj_sample_user',))
-    isExist = corsor_m.fetchone()
-    if (isExist) is not None: return "cjwsampleuser already exist", 409
-
-    # CJ_Websim_Member.users insert
-    insert_tuple = ('cj_sample_user', 'EXCEPT')
-    insert_query = f"INSERT INTO users (user_name, login_type) VALUES (%s, %s)"
-    corsor_m.execute(insert_query, insert_tuple)
-
-    # Get user_no ( Foreign key / automatically increase int value)
-    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cj_sample_user',))
-    user = corsor_m.fetchone() # (user_no, user_name, login_type)
-    user_no = user[0] 
-
-    # CJ_Websim_Member.profile insert 
-    insert_tuple = (user_no, '-', '-', 'cj_sample_user', 'user', 'cj_sample_user')
-    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, cj_world_account, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s, %s)"
-    corsor_m.execute(insert_query, insert_tuple)
-
-    conn_m.commit()
-    
-
-    return json.dumps({'testuser created'} , default=str), 201
 
 
 create_admin()
 create_test_user()
-create_test_user_2()
+
 
 
 if __name__ == '__main__':
