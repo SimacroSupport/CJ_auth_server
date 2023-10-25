@@ -389,7 +389,7 @@ def create_login_log():
 
 
 @app.route('/log/expire', methods=['POST'])
-def get_expire_lot():
+def get_expire_log():
     rq = request.get_json()
     decoded_token = decode_token(rq['access_token'])
     if decoded_token == {} : return "Access Token is not valid",401
