@@ -18,7 +18,7 @@ corsor_l = conn_l.cursor()
 
 @app.route('/')
 def board():
-    return "4090 Auth_Server running"
+    return "4081 Auth_Server running"
 
 #Token
 #Login Request == Token Create
@@ -505,5 +505,5 @@ create_test_user()
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=4090)
+    app.run(host='0.0.0.0', port=4081)
     
