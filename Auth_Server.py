@@ -123,14 +123,14 @@ def create_users():
     rq = request.get_json()
 
 
-    # decoded_token = decode_token(rq['access_token'])
-    # if decoded_token == {} : return "Access Token is not valid",401
-    # else : pass
+    decoded_token = decode_token(rq['access_token'])
+    if decoded_token == {} : return "Access Token is not valid",401
+    else : pass
 
-    # # Check authentication level with access_token user_no 
-    # user_authentication_level = decoded_token["authentication_level"] 
-    # if user_authentication_level == 'admin' : pass
-    # else : return "Invalid request",404 
+    # Check authentication level with access_token user_no 
+    user_authentication_level = decoded_token["authentication_level"] 
+    if user_authentication_level == 'admin' : pass
+    else : return "Invalid request",404 
 
     salt = get_salt()
     pw = sha256( rq['pw'] + salt )
@@ -141,8 +141,8 @@ def create_users():
     if (isExist) is not None: return "User id already exist", 409
 
     # CJ_Websim_Member.users insert
-    insert_tuple = (rq['user_name'])
-    insert_query = f"INSERT INTO users (user_name) VALUES (%s, %s)"
+    insert_tuple = (rq['user_name'],)
+    insert_query = f"INSERT INTO users (user_name) VALUES (%s)"
     corsor_m.execute(insert_query, insert_tuple)
 
     # Get user_no ( Foreign key / automatically increase int value)
@@ -151,8 +151,8 @@ def create_users():
     user_no = user[0] 
 
     # CJ_Websim_Member.profile insert 
-    insert_tuple = (user_no, rq['cell_phone'], rq['email'], rq['cj_world_account'], rq['authentication_level'], rq['name'])
-    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, cj_world_account, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s, %s)"
+    insert_tuple = (user_no, rq['cell_phone'], rq['email'],  rq['authentication_level'], rq['name'])
+    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s)"
     corsor_m.execute(insert_query, insert_tuple)
 
     conn_m.commit()
@@ -280,9 +280,9 @@ def update_users_admin():
     update_tuple_a = ()
     update_query_a = ''
 
-    if rq['email_address'] != '' or rq['cj_world_account'] != '' or  rq['phone_number'] != '' or  rq['user_authentication_level'] != '' :
-        update_tuple_m = ( rq['email_address'], rq['phone_number'], rq['cj_world_account'] , rq['user_authentication_level'], rq['target_user_no'])
-        update_query_m = f"UPDATE profile set email = ?, cell_phone = ?, cj_world_account = ?, authentication_level = ? WHERE user_no = ?"
+    if rq['email_address'] != ''  or  rq['phone_number'] != '' or  rq['user_authentication_level'] != '' :
+        update_tuple_m = ( rq['email_address'], rq['phone_number'] , rq['user_authentication_level'], rq['target_user_no'])
+        update_query_m = f"UPDATE profile set email = ?, cell_phone = ?, authentication_level = ? WHERE user_no = ?"
 
     if rq['new_password'] != '' :
         corsor_a.execute(f"SELECT * FROM password WHERE user_no = ?", (rq['target_user_no'],))
@@ -498,7 +498,7 @@ def create_admin():
     user_no = user[0] 
 
     # CJ_Websim_Member.profile insert 
-    insert_tuple = (user_no, '-', '-', 'admin', 'admin')
+    insert_tuple = (user_no, '-', '-', 'admin', 'cj_admin')
     insert_query = f"INSERT INTO profile (user_no, cell_phone, email, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s)"
     corsor_m.execute(insert_query, insert_tuple)
 
