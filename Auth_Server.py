@@ -349,6 +349,61 @@ def create_log():
 
     return json.dumps({})
 
+@app.route('/log/login', methods=['POST'])
+def create_login_log():
+    rq = request.get_json()
+    decoded_token = decode_token(rq['access_token'])
+    if decoded_token == {} : return "Access Token is not valid",401
+    else : pass
+
+
+    if rq['login_event_type'] == 0 : # login fail
+
+        #Login log insert (fail)
+        insert_tuple = (rq['user_no'], rq['user_name'], 0)
+        insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
+        corsor_l.execute(insert_query, insert_tuple)
+        conn_l.commit()
+
+        #user activity log insert 
+        insert_tuple = (rq['user_no'], rq['user_name'], "LOGIN", "login fail")
+        insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
+        corsor_l.execute(insert_query, insert_tuple)
+
+    elif rq['login_event_type'] == 1 : # login success
+
+        #Login log insert (success)
+        insert_tuple = (rq['user_no'], rq['user_name'], 1)
+        insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
+        corsor_l.execute(insert_query, insert_tuple)
+        conn_l.commit()
+
+        #user activity log insert 
+        insert_tuple = (rq['user_no'], rq['user_name'], "LOGIN", "login success")
+        insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
+        corsor_l.execute(insert_query, insert_tuple)
+    else:
+        print()
+
+    return json.dumps({})
+
+
+@app.route('/log/expire', methods=['POST'])
+def get_expire_lot():
+    rq = request.get_json()
+    decoded_token = decode_token(rq['access_token'])
+    if decoded_token == {} : return "Access Token is not valid",401
+    else : pass
+
+    user_authentication_level = decoded_token["authentication_level"] 
+    if user_authentication_level == 'admin' : pass
+
+    expiration_list = get_pw_expiration_list()
+
+    return json.dumps({'expiration_list':expiration_list})
+
+
+
 @app.route('/log/list', methods=['POST'])
 def read_log():
     rq = request.get_json()
