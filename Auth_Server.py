@@ -151,7 +151,7 @@ def create_users():
     user_no = user[0] 
 
     # CJ_Websim_Member.profile insert 
-    insert_tuple = (user_no, rq['cell_phone'], rq['email'],  rq['authentication_level'], rq['name'])
+    insert_tuple = (user_no, str( rq['cell_phone'] ), rq['email'],  rq['authentication_level'], rq['name'])
     insert_query = f"INSERT INTO profile (user_no, cell_phone, email, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s)"
     corsor_m.execute(insert_query, insert_tuple)
 
@@ -228,7 +228,7 @@ def update_users():
         update_query_m = f"UPDATE profile set email = ? WHERE user_no = ?"
     
     elif rq['update_target'] == 'cell_phone' :
-        update_tuple_m = ( rq['cell_phone'], rq['target_user_no'])
+        update_tuple_m = ( str(rq['cell_phone']), rq['target_user_no'])
         update_query_m = f"UPDATE profile set cell_phone = ? WHERE user_no = ?"
 
     elif rq['update_target'] == 'password' :
@@ -243,7 +243,7 @@ def update_users():
             return 'Id or Password is not valid', 401
 
     elif rq['update_target'] == 'both' :
-        update_tuple_m = ( rq['email'], rq['cell_phone'], rq['target_user_no'])
+        update_tuple_m = ( rq['email'], str(rq['cell_phone'] ), rq['target_user_no'])
         update_query_m = f"UPDATE profile set email = ?, cell_phone = ? WHERE user_no = ?"
     
     else :
