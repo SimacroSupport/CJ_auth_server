@@ -15,7 +15,7 @@ GRANT ALL PRIVILEGES ON CJ_Websim_Withdrawal.* TO 'cjwebsim'@'localhost';
 use CJ_Websim_Member;
 CREATE TABLE Users (
     user_no INT AUTO_INCREMENT PRIMARY KEY,
-    user_name VARCHAR(20)
+    user_name VARCHAR(40)
     -- login_type VARCHAR(20) -- "SSO" / "EXCEPT"
 );
 CREATE TABLE Profile (
@@ -27,7 +27,7 @@ CREATE TABLE Profile (
     join_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     authentication_level VARCHAR(20) NOT NULL, -- 'User'/'Admin'
-    user_name VARCHAR(128), -- base64 encryt
+    user_name VARCHAR(40),
     FOREIGN KEY(user_no) REFERENCES CJ_Websim_Member.Users(user_no) ON DELETE CASCADE
 );
 
@@ -35,9 +35,9 @@ use CJ_Websim_Auth;
 CREATE TABLE Password (
     password_id INT AUTO_INCREMENT PRIMARY KEY,
     user_no INT,
-    salt VARCHAR(128),
+    salt VARCHAR(256),
     update_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, 
-    password VARCHAR(128),
+    password VARCHAR(256),
     FOREIGN KEY(user_no) REFERENCES CJ_Websim_Member.Users(user_no) ON DELETE CASCADE
 );
 
@@ -46,8 +46,8 @@ use CJ_Websim_Log;
 CREATE TABLE User_activity_log (
     user_activity_log_id INT AUTO_INCREMENT PRIMARY KEY,
     user_no INT,
-    user_name VARCHAR(20),
-    action_type VARCHAR(10), -- CALULATION / LOGIN / MENU
+    user_name VARCHAR(40),
+    action_type VARCHAR(40), -- CALULATION / LOGIN / MENU
     meta_data VARCHAR(256), -- calculation log / status code / menu name
     log_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -55,13 +55,13 @@ CREATE TABLE User_activity_log (
 CREATE TABLE Withdrawal_log (
     withdrawal_log_id INT AUTO_INCREMENT PRIMARY KEY,
     user_no INT,
-    user_name VARCHAR(20),
+    user_name VARCHAR(40),
     withdrawl_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE Login_log (
     login_log_id INT AUTO_INCREMENT PRIMARY KEY,
     user_no INT,
-    user_name VARCHAR(20),
+    user_name VARCHAR(40),
     status_code TINYINT, -- 0: Fail, 1: Success
     login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

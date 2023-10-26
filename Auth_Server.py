@@ -4,6 +4,7 @@ from flask import make_response,Flask, request
 from flask_cors import CORS
 import datetime, json
 from pytz import timezone
+import mariadb
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -20,417 +21,445 @@ corsor_l = conn_l.cursor()
 def board():
     return "4081 Auth_Server running"
 
+def reconnect_db() :
+    global conn_m
+    global conn_a
+    global conn_l
+    global corsor_m
+    global corsor_a
+    global corsor_l
+    conn_m = get_db_conn(MEMBER_DB)
+    conn_a = get_db_conn(AUTH_DB)
+    conn_l = get_db_conn(LOG_DB)
+    corsor_m = conn_m.cursor()
+    corsor_a = conn_a.cursor()
+    corsor_l = conn_l.cursor()
+
+
 #Token
 #Login Request == Token Create
-@app.route('/token', methods=['POST'])
+@app.route('/login', methods=['POST'])
 def create_token():
-    rq = request.get_json()
+    try:
+        rq = request.get_json()
+        # check user exist
+        corsor_m.execute(f"SELECT user_no FROM users WHERE user_name = ?", (rq['user_name'],))
+        user_no = corsor_m.fetchone() # (user_no,)
+        if (user_no) is None: return "User name not exist", 400
+        user_no = user_no[0]
+        
 
-    # check user exist
-    corsor_m.execute(f"SELECT user_no FROM users WHERE user_name = ?", (rq['user_name'],))
-    user_no = corsor_m.fetchone() # (user_no,)
-    if (user_no) is None: return "User name not exist", 400
-    user_no = user_no[0]
-    
-
-    # check authorize
-    if (rq['login_type']) == 'EXCEPT':
-        corsor_a.execute(f"SELECT * FROM password WHERE user_no = ?", (user_no,))
-        pw_row = corsor_a.fetchone() # (password_id, user_no, salt, update_date, password)
-        pw = sha256( rq['pw'] + pw_row[2] ) # check pw
-        if pw == pw_row[4] : pass 
-        else : 
-            #Login log insert (fail)
+        # check authorize
+        if (rq['login_type']) == 'EXCEPT':
+            corsor_a.execute(f"SELECT * FROM password WHERE user_no = ?", (user_no,))
+            pw_row = corsor_a.fetchone() # (password_id, user_no, salt, update_date, password)
+            pw = sha256( rq['pw'] + pw_row[2] ) # check pw
+            if pw == pw_row[4] : pass 
+            else : 
+                #Login log insert ( Fail code : 0 )
+                insert_tuple = (user_no, rq['user_name'], 0)
+                insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
+                corsor_l.execute(insert_query, insert_tuple)
+                conn_l.commit()
+                return 'Id or Password is not valid', 401
+        elif (rq['login_type']) == 'SSO': pass
+        else: 
+            #Login log insert ( Fail code : 0 )
             insert_tuple = (user_no, rq['user_name'], 0)
             insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
             corsor_l.execute(insert_query, insert_tuple)
             conn_l.commit()
-            return 'Id or Password is not valid', 401
-    elif (rq['login_type']) == 'SSO': pass
-    else: 
-        #Login log insert (fail)
-        insert_tuple = (user_no, rq['user_name'], 0)
+            return "Bad Request", 404
+        
+        # get user information for inserting accesstoken
+        corsor_m.execute(f"SELECT * FROM profile WHERE user_no = ?", (user_no,))
+        profile_row = corsor_m.fetchone() # (user_no, cell_phone, email, cj_world_account, join_date, update_date, authentication_level)
+
+        # create access token
+        payload = {'exp':get_time_now() + datetime.timedelta(hours= 24), 'user_no':user_no, 'cell_phone':profile_row[2],'email':profile_row[3]
+                , 'authentication_level':profile_row[6], "user_name":profile_row[7]}
+        access_token = create_token_per_type(payload)
+
+        #Login log insert ( Success code : 1 )
+        insert_tuple = (user_no, rq['user_name'], 1)
         insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
         corsor_l.execute(insert_query, insert_tuple)
+
+        #user activity log insert *(login success cases only)
+        insert_tuple = (user_no, rq['user_name'], "LOGIN", "login success")
+        insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
+        corsor_l.execute(insert_query, insert_tuple)
+
         conn_l.commit()
-        return "Bad Request", 404
-    
-    # get user information for inserting accesstoken
-    corsor_m.execute(f"SELECT * FROM profile WHERE user_no = ?", (user_no,))
-    profile_row = corsor_m.fetchone() # (user_no, cell_phone, email, cj_world_account, join_date, update_date, authentication_level)
-
-    # create access token
-    payload = {'exp':get_time_now() + datetime.timedelta(hours= 24), 'user_no':user_no, 'cell_phone':profile_row[2],'email':profile_row[3]
-               , 'authentication_level':profile_row[6], "user_name":profile_row[7]}
-    access_token = create_token_per_type(payload)
-
-    # save refresh token to db
-    # refresh_token = create_token_per_type()
-    # insert_tuple = (user_no, refresh_token)
-    # insert_query = f"INSERT INTO refresh_token (user_no, refresh_token) VALUES (%s, %s)"
-    # corsor_a.execute(insert_query, insert_tuple)
-
-    conn_a.commit()
-
-    #Login log insert (success)
-    insert_tuple = (user_no, rq['user_name'], 1)
-    insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
-    corsor_l.execute(insert_query, insert_tuple)
-
-    #user activity log insert *(login success cases only)
-    insert_tuple = (user_no, rq['user_name'], "LOGIN", "login success")
-    insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
-    corsor_l.execute(insert_query, insert_tuple)
-
-    conn_l.commit()
 
 
-    #admin user case, return password expiration list
-    user_authentication_level = profile_row[7] 
-    if user_authentication_level == 'admin' : expiration_list = get_pw_expiration_list()
-    else : expiration_list = []
-    
+        #admin user case, return password expiration list
+        user_authentication_level = profile_row[6] 
+        if user_authentication_level == 'admin' : expiration_list = get_pw_expiration_list()
+        else : expiration_list = []
 
-    response = make_response({"access_token":access_token, 'user_info': payload, 'expiration_list':expiration_list})
-    # response.headers['Access-Token'] = access_token
-    # expire_date = get_time_now()
-    # expire_date = expire_date + datetime.timedelta(days=1)
-    # response.set_cookie(
-    #     "access_token",value=access_token,expires=expire_date,path="/",samesite="Lax",
-    # )
-
-    # return access token , refresh token
-    return response
+        response = make_response({"access_token":access_token, 'user_info': payload, 'expiration_list':expiration_list})
+        return response
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
 
-@app.route('/token/valid', methods=['POST'])
+@app.route('/token', methods=['POST'])
 def validate_token():
+    try:
+        rq = request.get_json() # access_token
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else :  return "Access Token is valid",200
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
-    rq = request.get_json() # access_token
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else :  return "Access Token is valid",200
-
-
-
-
-    
 #User
 #------------------------------------------------------------#
 
 @app.route('/users', methods=['POST'])
 def create_users():
-    rq = request.get_json()
+    try:
+        rq = request.get_json()
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else : pass
 
+        # Check authentication level with access_token user_no 
+        user_authentication_level = decoded_token["authentication_level"] 
+        if user_authentication_level == 'admin' : pass
+        else : return "Invalid request",404 
 
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else : pass
+        salt = get_salt()
+        pw = sha256( rq['pw'] + salt )
 
-    # Check authentication level with access_token user_no 
-    user_authentication_level = decoded_token["authentication_level"] 
-    if user_authentication_level == 'admin' : pass
-    else : return "Invalid request",404 
+        # Check duplicate
+        corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", (rq['user_name'],))
+        isExist = corsor_m.fetchone()
+        if (isExist) is not None: return "User id already exist", 409
 
-    salt = get_salt()
-    pw = sha256( rq['pw'] + salt )
+        # CJ_Websim_Member.users insert
+        insert_tuple = (rq['user_name'],)
+        insert_query = f"INSERT INTO users (user_name) VALUES (%s)"
+        corsor_m.execute(insert_query, insert_tuple)
 
-    # Check duplicate
-    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", (rq['user_name'],))
-    isExist = corsor_m.fetchone()
-    if (isExist) is not None: return "User id already exist", 409
+        conn_m.commit()
 
-    # CJ_Websim_Member.users insert
-    insert_tuple = (rq['user_name'],)
-    insert_query = f"INSERT INTO users (user_name) VALUES (%s)"
-    corsor_m.execute(insert_query, insert_tuple)
+        # Get user_no ( Foreign key / automatically increase int value)
+        corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", (rq['user_name'],))
+        user = corsor_m.fetchone() # (user_no, user_name)
+        user_no = user[0] 
 
-    # Get user_no ( Foreign key / automatically increase int value)
-    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", (rq['user_name'],))
-    user = corsor_m.fetchone() # (user_no, user_name)
-    user_no = user[0] 
+        # CJ_Websim_Member.profile insert 
+        insert_tuple = (user_no, str( rq['cell_phone'] ), rq['email'],  rq['authentication_level'], rq['name'])
+        insert_query = f"INSERT INTO profile (user_no, cell_phone, email, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s)"
+        corsor_m.execute(insert_query, insert_tuple)
 
-    # CJ_Websim_Member.profile insert 
-    insert_tuple = (user_no, str( rq['cell_phone'] ), rq['email'],  rq['authentication_level'], rq['name'])
-    insert_query = f"INSERT INTO profile (user_no, cell_phone, email, authentication_level, user_name) VALUES (%d, %s, %s, %s, %s)"
-    corsor_m.execute(insert_query, insert_tuple)
+        conn_m.commit()
+        
+        # CJ_Websim_Auth.password insert
+        insert_tuple = (user_no, salt, pw)
+        insert_query = f"INSERT INTO password (user_no, salt, password) VALUES (%d, %s, %s)"
+        corsor_a.execute(insert_query, insert_tuple)
+        
+        conn_a.commit()
 
-    conn_m.commit()
+        # join member.users, member.profile , return tuple array
+        corsor_m.execute(f"SELECT * FROM users INNER JOIN profile ON users.user_no = profile.user_no")
+        user_list = corsor_m.fetchall() # ( , , , )
+
+        return json.dumps({'user_list':user_list} , default=str), 201
     
-    # CJ_Websim_Auth.password insert
-    insert_tuple = (user_no, salt, pw)
-    insert_query = f"INSERT INTO password (user_no, salt, password) VALUES (%d, %s, %s)"
-    corsor_a.execute(insert_query, insert_tuple)
-
-    # commit db 
-    
-    conn_a.commit()
-
-    # join member.users, member.profile , return tuple array
-    corsor_m.execute(f"SELECT * FROM users INNER JOIN profile ON users.user_no = profile.user_no")
-    user_list = corsor_m.fetchall() # ( , , , )
-
-    return json.dumps({'user_list':user_list} , default=str), 201
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
 
 @app.route('/users', methods=['DELETE'])
 def delete_users():
-    rq = request.get_json() # access_token / taget_user_no
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else : pass
+    try:
+        rq = request.get_json() # access_token / taget_user_no
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else : pass
 
-    # Check authentication level with access_token user_no 
-    user_authentication_level = decoded_token["authentication_level"] 
-    if user_authentication_level == 'admin' : pass
-    else : return "Invalid request",404 
+        # Check authentication level with access_token user_no 
+        user_authentication_level = decoded_token["authentication_level"] 
+        if user_authentication_level == 'admin' : pass
+        else : return "Invalid request",404 
 
-    #Delete CJ_Websim_Member.users => via ON DELTE cascade option, delete authomatically another table information
-    corsor_m.execute(f"DELETE FROM users WHERE user_no = ?", (int( rq['target_user_no'] ),) )
-    conn_m.commit()
+        #Delete CJ_Websim_Member.users => via ON DELTE cascade option, delete authomatically another table information
+        corsor_m.execute(f"DELETE FROM users WHERE user_no = ?", (int( rq['target_user_no'] ),) )
+        conn_m.commit()
 
-    #Log insert query for Delete user history
-    insert_tuple = (rq['target_user_no'], rq["target_user_name"] )
-    insert_query = f"INSERT INTO withdrawal_log (user_no, user_name) VALUES (%s, %s)"
-    corsor_l.execute(insert_query, insert_tuple)
+        #Log insert query for Delete user history
+        insert_tuple = (int (rq['target_user_no']), rq["target_user_name"] )
+        insert_query = f"INSERT INTO withdrawal_log (user_no, user_name) VALUES (%s, %s)"
+        corsor_l.execute(insert_query, insert_tuple)
 
-    conn_l.commit()
+        conn_l.commit()
 
-    # join member.users, member.profile , return tuple array
-    corsor_m.execute(f"SELECT * FROM users INNER JOIN profile ON users.user_no = profile.user_no")
-    user_list = corsor_m.fetchall() # ( , , , )
-
-    return json.dumps({'user_list':user_list} , default=str)
+        # join member.users, member.profile , return tuple array
+        corsor_m.execute(f"SELECT * FROM users INNER JOIN profile ON users.user_no = profile.user_no")
+        user_list = corsor_m.fetchall() # ( , , , )
+        return json.dumps({'user_list':user_list} , default=str)
+    
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
 
 @app.route('/users', methods=['PUT'])
 def update_users():
-    rq = request.get_json()
+    try:
+        rq = request.get_json()
 
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else : pass
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else : pass
 
-    # Check authentication level with access_token user_no 
-    # User case (need to match access_token, target_user_no)
-    user_authentication_level = decoded_token["authentication_level"] 
-    if user_authentication_level == 'admin' : pass
-    elif user_authentication_level == 'user' and decoded_token['user_no'] == rq['target_user_no'] : pass 
-    else : return "Invalid request",404 
+        # Check authentication level with access_token user_no 
+        # User case (need to match access_token, target_user_no)
+        user_authentication_level = decoded_token["authentication_level"] 
+        if user_authentication_level == 'admin' : pass
+        elif user_authentication_level == 'user' and decoded_token['user_no'] == rq['target_user_no'] : pass 
+        else : return "Invalid request",404 
 
-    update_tuple_m = ''
-    update_query_m = ''
-    update_tuple_a = ''
-    update_query_a = ''
+        update_tuple_m = ''
+        update_query_m = ''
+        update_tuple_a = ''
+        update_query_a = ''
 
-    if rq['update_target'] == 'email' :
-        update_tuple_m = ( rq['email'], rq['target_user_no'])
-        update_query_m = f"UPDATE profile set email = ? WHERE user_no = ?"
-    
-    elif rq['update_target'] == 'cell_phone' :
-        update_tuple_m = ( str(rq['cell_phone']), rq['target_user_no'])
-        update_query_m = f"UPDATE profile set cell_phone = ? WHERE user_no = ?"
+        if rq['update_target'] == 'email' :
+            update_tuple_m = ( rq['email'], rq['target_user_no'])
+            update_query_m = f"UPDATE profile set email = ? WHERE user_no = ?"
+        
+        elif rq['update_target'] == 'cell_phone' :
+            update_tuple_m = ( str(rq['cell_phone']), rq['target_user_no'])
+            update_query_m = f"UPDATE profile set cell_phone = ? WHERE user_no = ?"
 
-    elif rq['update_target'] == 'password' :
-        corsor_a.execute(f"SELECT * FROM password WHERE user_no = ?", (rq['target_user_no'],))
-        pw_row = corsor_a.fetchone() # (password_id, user_no, salt, update_date, password)
-        pw = sha256( rq['current_password'] + pw_row[2] ) # check pw
-        if pw == pw_row[4] : 
-            new_pw = sha256( rq['new_password'] + pw_row[2] ) # make new pw
-            update_tuple_a = ( new_pw, rq['target_user_no'])
-            update_query_a = f"UPDATE password set password = ? WHERE user_no = ?"
+        elif rq['update_target'] == 'password' :
+            corsor_a.execute(f"SELECT * FROM password WHERE user_no = ?", (rq['target_user_no'],))
+            pw_row = corsor_a.fetchone() # (password_id, user_no, salt, update_date, password)
+            pw = sha256( rq['current_password'] + pw_row[2] ) # check pw
+            if pw == pw_row[4] : 
+                new_pw = sha256( rq['new_password'] + pw_row[2] ) # make new pw
+                update_tuple_a = ( new_pw, rq['target_user_no'])
+                update_query_a = f"UPDATE password set password = ? WHERE user_no = ?"
+            else :
+                return 'Id or Password is not valid', 401 
         else :
-            return 'Id or Password is not valid', 401
+            return "Invalid request",404  
+        
+        if  update_tuple_m != '' :
+            corsor_m.execute(update_query_m, update_tuple_m)
+            conn_m.commit()
 
-    elif rq['update_target'] == 'both' :
-        update_tuple_m = ( rq['email'], str(rq['cell_phone'] ), rq['target_user_no'])
-        update_query_m = f"UPDATE profile set email = ?, cell_phone = ? WHERE user_no = ?"
-    
-    else :
-        return "Invalid request",404  
-    
-    if  update_tuple_m != '' :
-        corsor_m.execute(update_query_m, update_tuple_m)
-        conn_m.commit()
-
-    if  update_tuple_a != '' :
-        corsor_a.execute(update_query_a, update_tuple_a)
-        conn_a.commit()
+        if  update_tuple_a != '' :
+            corsor_a.execute(update_query_a, update_tuple_a)
+            conn_a.commit()
 
 
-    return json.dumps({"status":"update"})
+        return json.dumps({"status":"update"})
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
 
 @app.route('/users/admin', methods=['PUT'])
 def update_users_admin():
-    rq = request.get_json()
+    try:
+        rq = request.get_json()
+        isUpdate = False
 
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else : pass
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else : pass
 
-    # Check authentication level with access_token user_no 
-    # User case (need to match access_token, target_user_no)
-    user_authentication_level = decoded_token["authentication_level"] 
-    if user_authentication_level == 'admin' : pass
-    else : return "Invalid request",404 
-
-    update_tuple_m = ()
-    update_query_m = 'UPDATE profile set '
-    update_tuple_a = ()
-    update_query_a = ''
-
-    if rq['email_address'] != ''  or  rq['phone_number'] != '' or  rq['user_authentication_level'] != '' :
-        update_tuple_m = ( rq['email_address'], rq['phone_number'] , rq['user_authentication_level'], rq['target_user_no'])
-        update_query_m = f"UPDATE profile set email = ?, cell_phone = ?, authentication_level = ? WHERE user_no = ?"
-
-    if rq['new_password'] != '' :
-        corsor_a.execute(f"SELECT * FROM password WHERE user_no = ?", (rq['target_user_no'],))
-        pw_row = corsor_a.fetchone()
-        new_pw = sha256( rq['new_password'] + pw_row[2] ) # check pw
-        update_tuple_a = ( new_pw, rq['target_user_no'])
-        update_query_a = f"UPDATE password set password = ? WHERE user_no = ?" 
-    
-    
-    # nothing to change
-    if update_tuple_m == () and update_tuple_a == () :
-        return "Invalid request",404 
-    
-    if  update_tuple_m != () :
-        corsor_m.execute(update_query_m, update_tuple_m)
-        conn_m.commit()
-
-    if  update_tuple_a != () :
-        corsor_a.execute(update_query_a, update_tuple_a)
-        conn_a.commit()
+        # Check authentication level with access_token user_no 
+        user_authentication_level = decoded_token["authentication_level"] 
+        if user_authentication_level == 'admin' : pass
+        else : return "Invalid request",404 
 
 
-    # join member.users, member.profile , return tuple array
-    corsor_m.execute(f"SELECT * FROM users INNER JOIN profile ON users.user_no = profile.user_no")
-    user_list = corsor_m.fetchall() # ( , , , )
+        if rq['email_address'] != '' :
+            update_tuple_m = ( rq['email_address'], rq['target_user_no'])
+            update_query_m = f"UPDATE profile set email = ? WHERE user_no = ?" 
+            corsor_m.execute(update_query_m, update_tuple_m)
+            conn_m.commit()
+            isUpdate = True
 
-    return json.dumps({'user_list':user_list} , default=str)
+        if rq['phone_number'] != '' :
+            update_tuple_m = ( rq['phone_number'], rq['target_user_no'])
+            update_query_m = f"UPDATE profile set cell_phone = ? WHERE user_no = ?" 
+            corsor_m.execute(update_query_m, update_tuple_m)
+            conn_m.commit()
+            isUpdate = True
+        
+        if rq['user_authentication_level'] == 'admin' or rq['user_authentication_level'] == 'user' :
+            update_tuple_m = ( rq['user_authentication_level'], rq['target_user_no'])
+            update_query_m = f"UPDATE profile set authentication_level = ? WHERE user_no = ?" 
+            corsor_m.execute(update_query_m, update_tuple_m)
+            conn_m.commit()
+            isUpdate = True
+
+        if rq['new_password'] != '' :
+            corsor_a.execute(f"SELECT * FROM password WHERE user_no = ?", (rq['target_user_no'],))
+            pw_row = corsor_a.fetchone()
+            new_pw = sha256( rq['new_password'] + pw_row[2] ) # check pw
+            update_tuple_a = ( new_pw, rq['target_user_no'])
+            update_query_a = f"UPDATE password set password = ? WHERE user_no = ?" 
+
+            corsor_a.execute(update_query_a, update_tuple_a)
+            conn_a.commit()
+            isUpdate = True
+        
+        #  change
+        if isUpdate :
+            # join member.users, member.profile , return tuple array
+            corsor_m.execute(f"SELECT * FROM users INNER JOIN profile ON users.user_no = profile.user_no")
+            user_list = corsor_m.fetchall() # ( , , , )
+            return json.dumps({'user_list':user_list} , default=str)
+        else :
+            return json.dumps({'user_list':[]} , default=str)
+        
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
 
 @app.route('/users/list', methods=['POST'])
 def read_users():
+    try:
+        rq = request.get_json()
 
-    rq = request.get_json()
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else : pass
 
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else : pass
+        # Check authentication level with access_token user_no 
+        user_authentication_level = decoded_token["authentication_level"]  
+        if user_authentication_level == 'admin' : pass
+        else : return "Invalid request",404 
 
-    # Check authentication level with access_token user_no 
-    user_authentication_level = decoded_token["authentication_level"]  
-    if user_authentication_level == 'admin' : pass
-    else : return "Invalid request",404 
-
-    # join member.users, member.profile , return tuple array
-    corsor_m.execute(f"SELECT * FROM users INNER JOIN profile ON users.user_no = profile.user_no")
-    user_list = corsor_m.fetchall() # ( , , , )
-
-    return json.dumps({'user_list':user_list} , default=str)
+        # join member.users, member.profile , return tuple array
+        corsor_m.execute(f"SELECT * FROM users INNER JOIN profile ON users.user_no = profile.user_no")
+        user_list = corsor_m.fetchall() # ( , , , )
+        return json.dumps({'user_list':user_list} , default=str)
+    
+    except mariadb.Error as err:
+        print(err)
 
 #Log
 #------------------------------------------------------------#
 @app.route('/log', methods=['POST'])
 def create_log():
-    rq = request.get_json()
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else : pass
+    try:
+        rq = request.get_json()
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else : pass
 
-    #user activity log insert 
-    insert_tuple = (decoded_token['user_no'], decoded_token['user_name'], rq['action_type'], rq['meta_data'])
-    insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
-    corsor_l.execute(insert_query, insert_tuple)
-    conn_l.commit()
-
-    return json.dumps({})
+        #user activity log insert 
+        insert_tuple = (decoded_token['user_no'], decoded_token['user_name'], rq['action_type'], rq['meta_data'])
+        insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
+        corsor_l.execute(insert_query, insert_tuple)
+        conn_l.commit()
+        return json.dumps({})
+    
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
 @app.route('/log/login', methods=['POST'])
 def create_login_log():
-    rq = request.get_json()
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else : pass
-
-
-    if rq['login_event_type'] == 0 : # login fail
-
-        #Login log insert (fail)
-        insert_tuple = (rq['user_no'], rq['user_name'], 0)
-        insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
-        corsor_l.execute(insert_query, insert_tuple)
-        conn_l.commit()
-
-        #user activity log insert 
-        insert_tuple = (rq['user_no'], rq['user_name'], "LOGIN", "login fail")
-        insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
-        corsor_l.execute(insert_query, insert_tuple)
-
-    elif rq['login_event_type'] == 1 : # login success
-
-        #Login log insert (success)
-        insert_tuple = (rq['user_no'], rq['user_name'], 1)
-        insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
-        corsor_l.execute(insert_query, insert_tuple)
-        conn_l.commit()
-
-        #user activity log insert 
-        insert_tuple = (rq['user_no'], rq['user_name'], "LOGIN", "login success")
-        insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
-        corsor_l.execute(insert_query, insert_tuple)
-    else:
-        print()
-
-    return json.dumps({})
+    try:
+        rq = request.get_json()
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else : pass
+        if rq['login_event_type'] == 0 : # login fail
+            #Login log insert (fail)
+            insert_tuple = (rq['user_no'], rq['user_name'], 0)
+            insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
+            corsor_l.execute(insert_query, insert_tuple)
+            conn_l.commit()
+            #user activity log insert 
+            insert_tuple = (rq['user_no'], rq['user_name'], "LOGIN", "login fail")
+            insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
+            corsor_l.execute(insert_query, insert_tuple)
+        elif rq['login_event_type'] == 1 : # login success
+            #Login log insert (success)
+            insert_tuple = (rq['user_no'], rq['user_name'], 1)
+            insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
+            corsor_l.execute(insert_query, insert_tuple)
+            conn_l.commit()
+            #user activity log insert 
+            insert_tuple = (rq['user_no'], rq['user_name'], "LOGIN", "login success")
+            insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
+            corsor_l.execute(insert_query, insert_tuple)
+        else:
+            print()
+        return json.dumps({})
+    
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
 
 @app.route('/log/expire', methods=['POST'])
 def get_expire_log():
-    rq = request.get_json()
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else : pass
+    try:
+        rq = request.get_json()
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else : pass
 
-    user_authentication_level = decoded_token["authentication_level"] 
-    if user_authentication_level == 'admin' : pass
+        user_authentication_level = decoded_token["authentication_level"] 
+        if user_authentication_level == 'admin' : pass
 
-    expiration_list = get_pw_expiration_list()
-
-    return json.dumps({'expiration_list':expiration_list})
+        expiration_list = get_pw_expiration_list()
+        return json.dumps({'expiration_list':expiration_list}, default=str)
+    
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
 
 
 @app.route('/log/list', methods=['POST'])
 def read_log():
-    rq = request.get_json()
-    decoded_token = decode_token(rq['access_token'])
-    if decoded_token == {} : return "Access Token is not valid",401
-    else : pass
+    try:
+        rq = request.get_json()
+        decoded_token = decode_token(rq['access_token'])
+        if decoded_token == {} : return "Access Token is not valid",401
+        else : pass
 
-    # rq['request_type'] : 'ENTIRE' , 'SELF'
-    if rq['request_type'] == 'ENTIRE' :
-        # authentical level check
-        user_authentication_level = decoded_token["authentication_level"] 
-        if user_authentication_level == 'admin' : pass
-        else : return "Invalid request",404 
+        # rq['request_type'] : 'ENTIRE' , 'SELF'
+        if rq['request_type'] == 'ENTIRE' :
+            # authentical level check
+            user_authentication_level = decoded_token["authentication_level"] 
+            if user_authentication_level == 'admin' : pass
+            else : return "Invalid request",404 
 
-        #return entire log list
-        corsor_l.execute(f"SELECT * FROM user_activity_log")
-        log_list = corsor_l.fetchall() 
-    elif rq['request_type'] == 'OWN' :
-        user_no = decoded_token["user_no"] 
-        
-        #return own log list
-        corsor_l.execute(f"SELECT * FROM user_activity_log where user_no = ?", (user_no,))
-        log_list = corsor_l.fetchall() 
-    else :
-        return "Invalid request",404 
-
-    return json.dumps({"log_list":log_list}, default=str)
+            #return entire log list
+            corsor_l.execute(f"SELECT * FROM user_activity_log")
+            log_list = corsor_l.fetchall() 
+        elif rq['request_type'] == 'OWN' :
+            user_no = decoded_token["user_no"] 
+            
+            #return own log list
+            corsor_l.execute(f"SELECT * FROM user_activity_log where user_no = ?", (user_no,))
+            log_list = corsor_l.fetchall() 
+        else :
+            return "Invalid request",404 
+        return json.dumps({"log_list":log_list}, default=str)
+    
+    except mariadb.Error as err:
+        reconnect_db()
+        print(err)
 
 
 def get_pw_expiration_list():
@@ -480,7 +509,8 @@ def get_pw_expiration_list():
 def create_admin():
 
     salt = get_salt()
-    pw = sha256( "cj1234!" + salt )
+    pw = sha256("cj1234!")
+    pw = sha256( pw + salt )
 
     # Check duplicate
     corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('cj_admin',))
@@ -518,7 +548,8 @@ def create_admin():
 def create_test_user():
 
     salt = get_salt()
-    pw = sha256( "0000" + salt )
+    pw = sha256( "0000"  )
+    pw = sha256( pw + salt )
 
 
     # Check duplicate
@@ -553,9 +584,47 @@ def create_test_user():
     return json.dumps({'testuser created'} , default=str), 201
 
 
+def create_test_user_2():
+
+    salt = get_salt()
+    pw = sha256( "0000"  )
+    pw = sha256( pw + salt )
+
+
+    # Check duplicate
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('pw_expire_test',))
+    isExist = corsor_m.fetchone()
+    if (isExist) is not None: return "cjwsampleuser already exist", 409
+
+    # CJ_Websim_Member.users insert
+    insert_tuple = ('pw_expire_test',)
+    insert_query = f"INSERT INTO users (user_name) VALUES (%s)"
+    corsor_m.execute(insert_query, insert_tuple)
+
+    # Get user_no ( Foreign key / automatically increase int value)
+    corsor_m.execute(f"SELECT * FROM users WHERE user_name = ?", ('pw_expire_test',))
+    user = corsor_m.fetchone() # (user_no, user_name, login_type)
+    user_no = user[0] 
+
+    # CJ_Websim_Member.profile insert 
+    insert_tuple = (user_no, '-', '-', 'user', 'pw_expire_test')
+    insert_query = f"INSERT INTO profile (user_no, cell_phone, email,  authentication_level, user_name) VALUES (%d, %s, %s, %s, %s)"
+    corsor_m.execute(insert_query, insert_tuple)
+
+    conn_m.commit()
+
+    # CJ_Websim_Auth.password insert
+    insert_tuple = (user_no, salt, datetime.datetime(2023,1,1),pw)
+    insert_query = f"INSERT INTO password (user_no, salt, update_date, password) VALUES (%d, %s, %s, %s)"
+    corsor_a.execute(insert_query, insert_tuple)
+    conn_a.commit()
+
+    return json.dumps({'testuser created'} , default=str), 201
+
 
 create_admin()
 create_test_user()
+create_test_user_2()
 
 
 
