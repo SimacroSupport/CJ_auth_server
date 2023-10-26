@@ -47,6 +47,10 @@ def create_token():
         user_no = corsor_m.fetchone() # (user_no,)
         if (user_no) is None: return "User name not exist", 400
         user_no = user_no[0]
+
+        # get user information for inserting accesstoken
+        corsor_m.execute(f"SELECT * FROM profile WHERE user_no = ?", (user_no,))
+        profile_row = corsor_m.fetchone() # (user_no, cell_phone, email, cj_world_account, join_date, update_date, authentication_level)
         
 
         # check authorize
@@ -57,7 +61,7 @@ def create_token():
             if pw == pw_row[4] : pass 
             else : 
                 #Login log insert ( Fail code : 0 )
-                insert_tuple = (user_no, rq['user_name'], 0)
+                insert_tuple = (user_no, profile_row[7], 0)
                 insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
                 corsor_l.execute(insert_query, insert_tuple)
                 conn_l.commit()
@@ -65,15 +69,13 @@ def create_token():
         elif (rq['login_type']) == 'SSO': pass
         else: 
             #Login log insert ( Fail code : 0 )
-            insert_tuple = (user_no, rq['user_name'], 0)
+            insert_tuple = (user_no, profile_row[7], 0)
             insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
             corsor_l.execute(insert_query, insert_tuple)
             conn_l.commit()
             return "Bad Request", 404
         
-        # get user information for inserting accesstoken
-        corsor_m.execute(f"SELECT * FROM profile WHERE user_no = ?", (user_no,))
-        profile_row = corsor_m.fetchone() # (user_no, cell_phone, email, cj_world_account, join_date, update_date, authentication_level)
+        
 
         # create access token
         payload = {'exp':get_time_now() + datetime.timedelta(hours= 24), 'user_no':user_no, 'cell_phone':profile_row[2],'email':profile_row[3]
@@ -81,12 +83,12 @@ def create_token():
         access_token = create_token_per_type(payload)
 
         #Login log insert ( Success code : 1 )
-        insert_tuple = (user_no, rq['user_name'], 1)
+        insert_tuple = (user_no, profile_row[7], 1)
         insert_query = f"INSERT INTO login_log (user_no, user_name, status_code) VALUES (%s, %s, %d)"
         corsor_l.execute(insert_query, insert_tuple)
 
         #user activity log insert *(login success cases only)
-        insert_tuple = (user_no, rq['user_name'], "LOGIN", "login success")
+        insert_tuple = (user_no, profile_row[7], "LOGIN", "login success")
         insert_query = f"INSERT INTO user_activity_log (user_no, user_name, action_type, meta_data) VALUES (%s, %s, %s, %s)"
         corsor_l.execute(insert_query, insert_tuple)
 
