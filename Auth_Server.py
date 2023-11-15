@@ -66,11 +66,14 @@ def create_token():
         
         print(rq['user_name'])
 
-        key = os.environ.get('ECB_KEY')
-        enc = base64.b64decode(rq['user_name'])
-        cipher = AES.new(key.encode('utf-8'), AES.MODE_ECB)
-        encrypted_user_name =  ( unpad(cipher.decrypt(enc),16) )
-        encrypted_user_name =  encrypted_user_name.decode('utf-8')
+        if (rq['login_type']) == 'SSO' :
+            key = os.environ.get('ECB_KEY')
+            enc = base64.b64decode(rq['user_name'])
+            cipher = AES.new(key.encode('utf-8'), AES.MODE_ECB)
+            encrypted_user_name =  ( unpad(cipher.decrypt(enc),16) )
+            encrypted_user_name =  encrypted_user_name.decode('utf-8')
+        else : 
+            encrypted_user_name = rq['user_name']
 
         print(encrypted_user_name)
 
