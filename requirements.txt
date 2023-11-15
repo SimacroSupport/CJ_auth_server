@@ -6,3 +6,4 @@ requests
 pytz
 PyJWT
 PyCryptodome
+waitress

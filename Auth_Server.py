@@ -6,6 +6,14 @@ import datetime, json
 from pytz import timezone
 import mariadb
 
+import base64 
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad,unpad
+
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
 app = Flask(__name__)
 cors = CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
@@ -17,8 +25,18 @@ corsor_m = conn_m.cursor()
 corsor_a = conn_a.cursor()
 corsor_l = conn_l.cursor()
 
+
+def decrypt(enc):
+    key = os.environ.get('ECB_KEY')
+    enc = base64.b64decode(enc)
+    cipher = AES.new(key.encode('utf-8'), AES.MODE_ECB)
+    return unpad(cipher.decrypt(enc),16)
+
+
+
 @app.route('/')
 def board():
+
     return "4081 Auth_Server running"
 
 def reconnect_db() :
@@ -44,9 +62,19 @@ def create_token():
         rq = request.get_json()
         # check user exist
 
-        secretKey  = 'dbwimGj6/tfkhX9+xuwpgaScM1Qo0gsNS0nMaDmka87l4exvGE3D/p0/YIw4fY9z'
+        secretKey  = os.environ.get('SHA_KEY')
+        
+        print(rq['user_name'])
 
-        corsor_m.execute(f"SELECT user_no FROM users WHERE user_name = ?", (rq['user_name'],))
+        key = os.environ.get('ECB_KEY')
+        enc = base64.b64decode(rq['user_name'])
+        cipher = AES.new(key.encode('utf-8'), AES.MODE_ECB)
+        encrypted_user_name =  ( unpad(cipher.decrypt(enc),16) )
+        encrypted_user_name =  encrypted_user_name.decode('utf-8')
+
+        print(encrypted_user_name)
+
+        corsor_m.execute(f"SELECT user_no FROM users WHERE user_name = ?", (encrypted_user_name,))
         user_no = corsor_m.fetchone() # (user_no,)
         if (user_no) is None: return "User name not exist", 400
         user_no = user_no[0]
@@ -54,6 +82,7 @@ def create_token():
         # get user information for inserting accesstoken
         corsor_m.execute(f"SELECT * FROM profile WHERE user_no = ?", (user_no,))
         profile_row = corsor_m.fetchone() # (user_no, cell_phone, email, cj_world_account, join_date, update_date, authentication_level)
+        
         
         
 
@@ -70,15 +99,15 @@ def create_token():
                 corsor_l.execute(insert_query, insert_tuple)
                 conn_l.commit()
                 response = make_response({"detail":'Id or Password is not valid'},401)
-                response.headers['server'] = ""
+                response.headers['server']=None
                 return response
   
         elif (rq['login_type']) == 'SSO':
-            if sha256(rq['user_name'] + secretKey) == rq['check_key']:
+            if sha256(encrypted_user_name + secretKey) == rq['check_key']:
                 pass
             else :
                 response = make_response({"detail":'Check key is not valid'},401)
-                response.headers['server'] = ""
+                response.headers['server']=None
                 return response
         else: 
             #Login log insert ( Fail code : 0 )
@@ -87,7 +116,7 @@ def create_token():
             corsor_l.execute(insert_query, insert_tuple)
             conn_l.commit()
             response = make_response({"detail":'Abnormal request'},404)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         
         
@@ -116,18 +145,18 @@ def create_token():
         else : expiration_list = []
 
         response = make_response({"access_token":access_token, 'user_info': payload, 'expiration_list':expiration_list})
-        response.headers['server'] = ""
+        response.headers['server']=None
         
         return response
     except mariadb.Error as err:
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 
@@ -140,21 +169,23 @@ def validate_token():
 
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
+            response.headers['Server']=None
             return response
         else :  
             response = make_response({"status":"success"}, 200)
-            response.headers['server'] = ""
+            response.headers['server']=None
+            response.headers['Server']=None
             return response
     except mariadb.Error as err:
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
         
 
@@ -168,7 +199,7 @@ def create_users():
         decoded_token = decode_token(rq['access_token'])
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         else : pass
 
@@ -177,7 +208,7 @@ def create_users():
         if user_authentication_level == 'admin' : pass
         else : 
             response = make_response({"status":"fail"}, 404)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
 
         salt = get_salt()
@@ -188,7 +219,7 @@ def create_users():
         isExist = corsor_m.fetchone()
         if (isExist) is not None: 
             response = make_response({"status":"fail"}, 409)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
 
         # CJ_Websim_Member.users insert
@@ -224,18 +255,18 @@ def create_users():
         res = json.dumps({'user_list':user_list} , default=str)
 
         response = make_response(res, 201)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     
     except mariadb.Error as err:
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 
@@ -246,7 +277,7 @@ def delete_users():
         decoded_token = decode_token(rq['access_token'])
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         else : pass
 
@@ -255,7 +286,7 @@ def delete_users():
         if user_authentication_level == 'admin' : pass
         else : 
             response = make_response({"status":"fail"}, 404)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
 
         #Delete CJ_Websim_Member.users => via ON DELTE cascade option, delete authomatically another table information
@@ -276,7 +307,7 @@ def delete_users():
         res = json.dumps({'user_list':user_list} , default=str)
 
         response = make_response(res, 200)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
     
@@ -284,11 +315,11 @@ def delete_users():
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 
@@ -300,7 +331,7 @@ def update_users():
         decoded_token = decode_token(rq['access_token'])
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         else : pass
 
@@ -311,7 +342,7 @@ def update_users():
         elif user_authentication_level == 'user' and decoded_token['user_no'] == rq['target_user_no'] : pass 
         else :
             response = make_response({"status":"fail"}, 404)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
 
         update_tuple_m = ''
@@ -337,11 +368,11 @@ def update_users():
                 update_query_a = f"UPDATE password set password = ? WHERE user_no = ?"
             else :
                 response = make_response({"status":"fail"}, 401)
-                response.headers['server'] = ""
+                response.headers['server']=None
                 return response
         else :
             response = make_response({"status":"fail"}, 404)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         
         if  update_tuple_m != '' :
@@ -353,18 +384,18 @@ def update_users():
             conn_a.commit()
 
         response = make_response({"status":"update"}, 200)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
     except mariadb.Error as err:
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 
@@ -377,7 +408,7 @@ def update_users_admin():
         decoded_token = decode_token(rq['access_token'])
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         else : pass
 
@@ -386,7 +417,7 @@ def update_users_admin():
         if user_authentication_level == 'admin' : pass
         else : 
             response = make_response({"status":"fail"}, 404)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
 
 
@@ -430,25 +461,25 @@ def update_users_admin():
 
             res = json.dumps({'user_list':user_list} , default=str)
             response = make_response(res, 200)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
 
     
         else :
             res = json.dumps({'user_list':[]} , default=str)
             response = make_response(res, 200)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         
     except mariadb.Error as err:
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 
@@ -460,7 +491,7 @@ def read_users():
         decoded_token = decode_token(rq['access_token'])
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         else : pass
 
@@ -469,7 +500,7 @@ def read_users():
         if user_authentication_level == 'admin' : pass
         else : 
             response = make_response({"status":"fail"}, 404)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
 
         # join member.users, member.profile , return tuple array
@@ -478,7 +509,7 @@ def read_users():
 
         res = json.dumps({'user_list':user_list} , default=str)
         response = make_response(res, 200)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
     
@@ -486,11 +517,11 @@ def read_users():
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 #Log
@@ -502,7 +533,7 @@ def create_log():
         decoded_token = decode_token(rq['access_token'])
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         else : pass
 
@@ -513,17 +544,17 @@ def create_log():
         conn_l.commit()
         
         response = make_response({"status":"insert"}, 200)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     
     except mariadb.Error as err:
         reconnect_db()
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 @app.route('/log/login', methods=['POST'])
@@ -533,7 +564,7 @@ def create_login_log():
         decoded_token = decode_token(rq['access_token'])
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         else : pass
         if rq['login_event_type'] == 0 : # login fail
@@ -560,18 +591,18 @@ def create_login_log():
             print()
         
         response = make_response({"status":"success"}, 200)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     
     except mariadb.Error as err:
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 
@@ -582,7 +613,7 @@ def get_expire_log():
         decoded_token = decode_token(rq['access_token'])
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         else : pass
 
@@ -593,7 +624,7 @@ def get_expire_log():
 
         res = json.dumps({'expiration_list':expiration_list} , default=str)
         response = make_response(res, 200)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
     
@@ -601,11 +632,11 @@ def get_expire_log():
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 
@@ -617,7 +648,7 @@ def read_log():
         decoded_token = decode_token(rq['access_token'])
         if decoded_token == {} : 
             response = make_response({"status":"fail"}, 401)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         else : pass
 
@@ -628,7 +659,7 @@ def read_log():
             if user_authentication_level == 'admin' : pass
             else : 
                 response = make_response({"status":"fail"}, 404)
-                response.headers['server'] = ""
+                response.headers['server']=None
                 return response
 
             #return entire log list
@@ -642,13 +673,13 @@ def read_log():
             log_list = corsor_l.fetchall() 
         else :
             response = make_response({"status":"fail"}, 404)
-            response.headers['server'] = ""
+            response.headers['server']=None
             return response
         
 
         res = json.dumps({'log_list':log_list} , default=str)
         response = make_response(res, 200)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
     
@@ -656,11 +687,11 @@ def read_log():
         reconnect_db()
         print(err)
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
     except:
         response = make_response({"status":"fail"}, 401)
-        response.headers['server'] = ""
+        response.headers['server']=None
         return response
 
 
@@ -823,30 +854,6 @@ def create_test_user_2():
 
     return json.dumps({'testuser created'} , default=str), 201
 
-class AESCipher(object):
-
-    def __init__(self, key):
-        self.bs = AES.block_size
-        self.key = hashlib.sha256(key.encode()).digest()
-
-    def encrypt(self, raw):
-        raw = self._pad(raw)
-        iv = Random.new().read(AES.block_size)
-        cipher = AES.new(self.key, AES.MODE_CBC, iv)
-        return base64.b64encode(iv + cipher.encrypt(raw.encode()))
-
-    def decrypt(self, enc):
-        enc = base64.b64decode(enc)
-        iv = enc[:AES.block_size]
-        cipher = AES.new(self.key, AES.MODE_CBC, iv)
-        return AESCipher._unpad(cipher.decrypt(enc[AES.block_size:])).decode('utf-8')
-
-    def _pad(self, s):
-        return s + (self.bs - len(s) % self.bs) * chr(self.bs - len(s) % self.bs)
-
-    @staticmethod
-    def _unpad(s):
-        return s[:-ord(s[len(s)-1:])]
 
 create_admin()
 create_test_user()
@@ -854,6 +861,6 @@ create_test_user_2()
 
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=4081)
+# if __name__ == '__main__':
+#     app.run(host='0.0.0.0', port=4081)
     
