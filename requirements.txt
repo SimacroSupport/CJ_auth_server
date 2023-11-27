@@ -7,3 +7,4 @@ pytz
 PyJWT
 PyCryptodome
 waitress
+python-dotenv
